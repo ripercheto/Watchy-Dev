@@ -18,6 +18,20 @@
 #define MENU_HEIGHT 25
 #define MENU_LENGTH 8 * 2
 #define MENU_ITEMS_VISIBLE 7
+
+//alarm
+#define SET_ALARM_INDEX 0
+#define SET_ALARM_ENABLED 1
+#define SET_ALARM_HOUR 2
+#define SET_ALARM_MINUTE 3
+#define SET_ALARM_SUNDAY 4
+#define SET_ALARM_MONDAY 5
+#define SET_ALARM_TUESDAY 6
+#define SET_ALARM_WEDNESDAY 7
+#define SET_ALARM_THURSDAY 8
+#define SET_ALARM_FRIDAY 9
+#define SET_ALARM_SATURDAY 10
+
 //set time
 #define SET_HOUR 0
 #define SET_MINUTE 1

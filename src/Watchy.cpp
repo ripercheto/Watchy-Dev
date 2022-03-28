@@ -3,6 +3,7 @@
 WatchyRTC Watchy::RTC;
 GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> Watchy::display(GxEPD2_154_D67(DISPLAY_CS, DISPLAY_DC, DISPLAY_RES, DISPLAY_BUSY));
 
+int alarmIndex;
 RTC_DATA_ATTR int guiState;
 RTC_DATA_ATTR int menuIndex;
 RTC_DATA_ATTR BMA423 sensor;
@@ -13,6 +14,7 @@ RTC_DATA_ATTR int weatherIntervalCounter = -1;
 RTC_DATA_ATTR bool displayFullInit = true;
 
 const char *menuItems[] = {"Alarm", "Vibrate Motor", "Show Accelerometer", "Set Time", "Setup WiFi", "Update Firmware", "Sync NTP", "About Watchy", "ASS", "BASS", "GASS", "PASS", "SASS", "JASS", "TITTIES", "HEKKIE"};
+const char *PREFERENCES_ALARMS_KEY = "alarms";
 
 void Watchy::init(String datetime) {
     esp_sleep_wakeup_cause_t wakeup_reason;
@@ -168,6 +170,7 @@ void Watchy::handleButtonPress() {
 void Watchy::drawMenuItems() {
     switch (menuIndex) {
         case 0:
+            setAlarm();
             break;
         case 1:
             showBuzz();
@@ -276,7 +279,7 @@ void Watchy::vibMotor(uint8_t intervalMs, uint8_t length) {
 }
 
 void Watchy::setTime() {
-
+    delay(1000);  // delay to prevent accidental click
     guiState = APP_STATE;
 
     RTC.read(currentTime);
@@ -298,8 +301,8 @@ void Watchy::setTime() {
 
     display.setFullWindow();
 
+    bool cancelled = false;
     while (1) {
-
         if (digitalRead(MENU_BTN_PIN) == 1) {
             setIndex++;
             if (setIndex > SET_DAY) {
@@ -309,12 +312,15 @@ void Watchy::setTime() {
         if (digitalRead(BACK_BTN_PIN) == 1) {
             if (setIndex != SET_HOUR) {
                 setIndex--;
+            } else {
+                cancelled = true;
+                break;
             }
         }
 
         blink = 1 - blink;
 
-    if(digitalRead(DOWN_BTN_PIN) == 1){
+        if (digitalRead(UP_BTN_PIN) == 1) {
             blink = 1;
             switch (setIndex) {
                 case SET_HOUR:
@@ -337,7 +343,7 @@ void Watchy::setTime() {
             }
         }
 
-    if(digitalRead(UP_BTN_PIN) == 1){
+        if (digitalRead(DOWN_BTN_PIN) == 1) {
             blink = 1;
             switch (setIndex) {
                 case SET_HOUR:
@@ -418,6 +424,7 @@ void Watchy::setTime() {
         display.display(true);  // partial refresh
     }
 
+    if (!cancelled) {
         tmElements_t tm;
         tm.Month = month;
         tm.Day = day;
@@ -427,11 +434,302 @@ void Watchy::setTime() {
         tm.Second = 0;
 
         RTC.set(tm);
-
-    showMenu(menuIndex, false);
-
     }
 
+    showMenu(menuIndex, false);
+}
+void Watchy::updateAlarmData(int index) {
+    uint32_t timeStamp = preferences.getUInt(((String)index).c_str(), 0);  // Bits: DDDDDHHHHHMMMMMM
+
+    currentAlarm.enabled = (timeStamp >> 20) & 1;
+    currentAlarm.hour = (timeStamp >> 6) & 31;  // 11111
+    currentAlarm.minute = (timeStamp)&63;       // 111111
+
+    int days = (timeStamp >> 13) & 127;  // 1111111
+    currentAlarm.sunday = days & 1;
+    currentAlarm.monday = (days >> 1) & 1;
+    currentAlarm.tuesday = (days >> 2) & 1;
+    currentAlarm.wednesday = (days >> 3) & 1;
+    currentAlarm.thursday = (days >> 4) & 1;
+    currentAlarm.friday = (days >> 5) & 1;
+    currentAlarm.saturday = (days >> 6) & 1;
+}
+void Watchy::setAlarm() {
+    delay(1000);  // delay to prevent accidental click
+    guiState = APP_STATE;
+
+    preferences.begin(PREFERENCES_ALARMS_KEY, false);
+    alarmIndex = 0;
+    updateAlarmData(alarmIndex);
+    int8_t setIndex = SET_ALARM_INDEX;
+
+    int8_t blink = 0;
+
+    pinMode(DOWN_BTN_PIN, INPUT);
+    pinMode(UP_BTN_PIN, INPUT);
+    pinMode(MENU_BTN_PIN, INPUT);
+    pinMode(BACK_BTN_PIN, INPUT);
+
+    display.setFullWindow();
+    bool cancelled = false;
+    int loopCount = 0;
+    while (1) {
+        if (digitalRead(MENU_BTN_PIN) == 1) {
+            setIndex++;
+            if (setIndex > SET_ALARM_SATURDAY) {
+                break;
+            }
+        }
+        if (digitalRead(BACK_BTN_PIN) == 1) {
+            if (setIndex != SET_ALARM_INDEX) {
+                setIndex--;
+            } else {
+                cancelled = true;
+                break;
+            }
+        }
+
+        blink = 1 - blink;
+        loopCount++;
+        if (digitalRead(UP_BTN_PIN) == 1) {
+            blink = 1;
+            switch (setIndex) {
+                case SET_ALARM_INDEX:
+                    alarmIndex++;
+                    if (alarmIndex > 9) {
+                        alarmIndex = 0;
+                    }
+                    updateAlarmData(alarmIndex);
+                    break;
+                case SET_ALARM_ENABLED:
+                    currentAlarm.enabled = 1 - currentAlarm.enabled;
+                    break;
+                case SET_ALARM_HOUR:
+                    currentAlarm.hour == 23 ? (currentAlarm.hour = 0) : currentAlarm.hour++;
+                    break;
+                case SET_ALARM_MINUTE:
+                    currentAlarm.minute == 59 ? (currentAlarm.minute = 0) : currentAlarm.minute++;
+                    break;
+                case SET_ALARM_MONDAY:
+                    currentAlarm.monday = 1 - currentAlarm.monday;
+                    break;
+                case SET_ALARM_TUESDAY:
+                    currentAlarm.tuesday = 1 - currentAlarm.tuesday;
+                    break;
+                case SET_ALARM_WEDNESDAY:
+                    currentAlarm.wednesday = 1 - currentAlarm.wednesday;
+                    break;
+                case SET_ALARM_THURSDAY:
+                    currentAlarm.thursday = 1 - currentAlarm.thursday;
+                    break;
+                case SET_ALARM_FRIDAY:
+                    currentAlarm.friday = 1 - currentAlarm.friday;
+                    break;
+                case SET_ALARM_SATURDAY:
+                    currentAlarm.saturday = 1 - currentAlarm.saturday;
+                    break;
+                case SET_ALARM_SUNDAY:
+                    currentAlarm.sunday = 1 - currentAlarm.sunday;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        if (digitalRead(DOWN_BTN_PIN) == 1) {
+            blink = 1;
+            switch (setIndex) {
+                case SET_ALARM_INDEX:
+                    alarmIndex--;
+                    if (alarmIndex < 0) {
+                        alarmIndex = 9;
+                    }
+                    updateAlarmData(alarmIndex);
+                    break;
+                case SET_ALARM_ENABLED:
+                    currentAlarm.enabled = 1 - currentAlarm.enabled;
+                    break;
+                case SET_ALARM_HOUR:
+                    currentAlarm.hour == 0 ? (currentAlarm.hour = 23) : currentAlarm.hour--;
+                    break;
+                case SET_ALARM_MINUTE:
+                    currentAlarm.minute == 0 ? (currentAlarm.minute = 59) : currentAlarm.minute--;
+                    break;
+                case SET_ALARM_MONDAY:
+                    currentAlarm.monday = 1 - currentAlarm.monday;
+                    break;
+                case SET_ALARM_TUESDAY:
+                    currentAlarm.tuesday = 1 - currentAlarm.tuesday;
+                    break;
+                case SET_ALARM_WEDNESDAY:
+                    currentAlarm.wednesday = 1 - currentAlarm.wednesday;
+                    break;
+                case SET_ALARM_THURSDAY:
+                    currentAlarm.thursday = 1 - currentAlarm.thursday;
+                    break;
+                case SET_ALARM_FRIDAY:
+                    currentAlarm.friday = 1 - currentAlarm.friday;
+                    break;
+                case SET_ALARM_SATURDAY:
+                    currentAlarm.saturday = 1 - currentAlarm.saturday;
+                    break;
+                case SET_ALARM_SUNDAY:
+                    currentAlarm.sunday = 1 - currentAlarm.sunday;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        display.fillScreen(GxEPD_BLACK);
+        display.setTextColor(GxEPD_WHITE);
+        display.setFont(&DSEG7_Classic_Bold_53);
+
+        display.setCursor(5, 80);
+        if (setIndex == SET_ALARM_HOUR) {  // blink hour digits
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        if (currentAlarm.hour < 10) {
+            display.print("0");
+        }
+        display.print(currentAlarm.hour);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.print(":");
+
+        display.setCursor(108, 80);
+        if (setIndex == SET_ALARM_MINUTE) {  // blink minute digits
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        if (currentAlarm.minute < 10) {
+            display.print("0");
+        }
+        display.print(currentAlarm.minute);
+
+        display.setTextColor(GxEPD_WHITE);
+
+        display.setFont(&FreeMonoBold9pt7b);
+
+        int startX = 35;
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX, 100);
+        display.print("Index: ");
+        if (setIndex == SET_ALARM_INDEX) {  // blink minute digits
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(alarmIndex);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX, 120);
+        display.print("Enabled: ");
+        if (setIndex == SET_ALARM_ENABLED) {  // blink minute digits
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.enabled);
+
+        int startY = 150;
+        int SPACING = 20;
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX, startY);
+        if (setIndex == SET_ALARM_SUNDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.sunday);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX + SPACING, startY);
+        if (setIndex == SET_ALARM_MONDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.monday);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX + SPACING * 2, startY);
+        if (setIndex == SET_ALARM_TUESDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.tuesday);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX + SPACING * 3, startY);
+        if (setIndex == SET_ALARM_WEDNESDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.wednesday);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX + SPACING * 4, startY);
+        if (setIndex == SET_ALARM_THURSDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.thursday);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX + SPACING * 5, startY);
+        if (setIndex == SET_ALARM_FRIDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.friday);
+
+        display.setTextColor(GxEPD_WHITE);
+        display.setCursor(startX + SPACING * 6, startY);
+        if (setIndex == SET_ALARM_SATURDAY) {
+            display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);
+        }
+        display.print(currentAlarm.saturday);
+
+        display.setTextColor(GxEPD_WHITE);
+
+        display.setCursor(startX, startY + SPACING);
+        display.print("S");
+        display.setCursor(startX + SPACING * 1, startY + SPACING);
+        display.print("M");
+        display.setCursor(startX + SPACING * 2, startY + SPACING);
+        display.print("T");
+        display.setCursor(startX + SPACING * 3, startY + SPACING);
+        display.print("W");
+        display.setCursor(startX + SPACING * 4, startY + SPACING);
+        display.print("T");
+        display.setCursor(startX + SPACING * 5, startY + SPACING);
+        display.print("F");
+        display.setCursor(startX + SPACING * 6, startY + SPACING);
+        display.print("S");
+
+        display.display(true);
+        display.display(!(loopCount % 15 == 0));  // full refresh every 10 blinks
+    }
+    if (!cancelled) {
+        int days = currentAlarm.sunday | (currentAlarm.monday << 1) | (currentAlarm.tuesday << 2) | (currentAlarm.wednesday << 3) | (currentAlarm.thursday << 4) | (currentAlarm.friday << 5) | (currentAlarm.saturday << 6);
+        uint32_t timeStamp = (uint32_t)((currentAlarm.enabled << 20) | (days << 13) | (currentAlarm.hour << 6) | currentAlarm.minute);
+        preferences.putUInt("1", timeStamp);
+    }
+    preferences.end();
+
+    showMenu(menuIndex, false);
+}
+
+void Watchy::checkAlarm() {
+    preferences.begin(PREFERENCES_ALARMS_KEY, true);
+    uint32_t timeStamp = preferences.getUInt("1", 0);
+    int enabled = (timeStamp >> 20) & 1;  // 1
+    if (enabled == 0) {
+        return;
+    }
+    int days = (timeStamp >> 13) & 127;  // 1111111
+    int day = currentTime.Wday;
+    int currentDay = (days << (day - 1)) & 1;  // wday range 1-7
+    if (currentDay == 0) {
+        return;
+    }
+
+    int hour = (timeStamp >> 6) & 31;  // 11111
+    int minute = (timeStamp)&63;       // 111111
+    preferences.end();
+    if (currentTime.Hour == hour && currentTime.Minute == minute) {
+        vibMotor();
+    }
+}
 void Watchy::showAccelerometer() {
     display.setFullWindow();
     display.fillScreen(GxEPD_BLACK);
@@ -508,6 +806,7 @@ void Watchy::showWatchFace(bool partialRefresh) {
     drawWatchFace();
     display.display(partialRefresh);  // partial refresh
     guiState = WATCHFACE_STATE;
+    checkAlarm();
 }
 
 void Watchy::drawWatchFace() {
