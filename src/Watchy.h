@@ -52,8 +52,7 @@ class Watchy {
         void vibMotor(uint8_t intervalMs = 100, uint8_t length = 20);
 
         void handleButtonPress();
-        void showMenu(byte menuIndex, bool partialRefresh);
-        void showFastMenu(byte menuIndex);
+    void showMenu(byte menuIndex, bool partialRefresh = true);
         void showAbout();
         void showBuzz();
         void showAccelerometer();
@@ -72,6 +71,7 @@ class Watchy {
         virtual void drawWatchFace(); //override this method for different watch faces
 
     private:
+    void drawMenuItems();
         void _bmaConfig();
         static void _configModeCallback(WiFiManager *myWiFiManager);
         static uint16_t _readRegister(uint8_t address, uint8_t reg, uint8_t *data, uint16_t len);
