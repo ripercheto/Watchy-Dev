@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include "arduino_pins.h"
+#define ENABLE_DLST true //daylight savings offset
 
 //display
 #define DISPLAY_WIDTH 200
