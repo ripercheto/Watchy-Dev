@@ -3,7 +3,6 @@
 WatchyRTC Watchy::RTC;
 GxEPD2_BW<GxEPD2_154_D67, GxEPD2_154_D67::HEIGHT> Watchy::display(GxEPD2_154_D67(DISPLAY_CS, DISPLAY_DC, DISPLAY_RES, DISPLAY_BUSY));
 
-int alarmIndex;
 RTC_DATA_ATTR int guiState;
 RTC_DATA_ATTR int menuIndex;
 RTC_DATA_ATTR BMA423 sensor;
@@ -439,7 +438,7 @@ void Watchy::setTime() {
     showMenu(menuIndex, false);
 }
 void Watchy::updateAlarmData(int index) {
-    uint32_t timeStamp = preferences.getUInt(((String)index).c_str(), 0);  // Bits: DDDDDHHHHHMMMMMM
+    uint32_t timeStamp = preferences.getUInt(((String)index).c_str(), 0);  // Bits: ESFTWTMSHHHHHMMMMMM
 
     currentAlarm.enabled = (timeStamp >> 20) & 1;
     currentAlarm.hour = (timeStamp >> 6) & 31;  // 11111
@@ -459,7 +458,7 @@ void Watchy::setAlarm() {
     guiState = APP_STATE;
 
     preferences.begin(PREFERENCES_ALARMS_KEY, false);
-    alarmIndex = 0;
+    int alarmIndex = 0;
     updateAlarmData(alarmIndex);
     int8_t setIndex = SET_ALARM_INDEX;
 
@@ -496,7 +495,7 @@ void Watchy::setAlarm() {
             switch (setIndex) {
                 case SET_ALARM_INDEX:
                     alarmIndex++;
-                    if (alarmIndex > 9) {
+                    if (alarmIndex > ALARM_COUNT) {
                         alarmIndex = 0;
                     }
                     updateAlarmData(alarmIndex);
@@ -702,7 +701,7 @@ void Watchy::setAlarm() {
     if (!cancelled) {
         int days = currentAlarm.sunday | (currentAlarm.monday << 1) | (currentAlarm.tuesday << 2) | (currentAlarm.wednesday << 3) | (currentAlarm.thursday << 4) | (currentAlarm.friday << 5) | (currentAlarm.saturday << 6);
         uint32_t timeStamp = (uint32_t)((currentAlarm.enabled << 20) | (days << 13) | (currentAlarm.hour << 6) | currentAlarm.minute);
-        preferences.putUInt("1", timeStamp);
+        preferences.putUInt(((String)alarmIndex).c_str(), timeStamp);
     }
     preferences.end();
 
@@ -711,24 +710,30 @@ void Watchy::setAlarm() {
 
 void Watchy::checkAlarm() {
     preferences.begin(PREFERENCES_ALARMS_KEY, true);
-    uint32_t timeStamp = preferences.getUInt("1", 0);
+    for (int i = 0; i < ALARM_COUNT; i++) {
+        uint32_t timeStamp = preferences.getUInt(((String)i).c_str(), 0);
     int enabled = (timeStamp >> 20) & 1;  // 1
+
     if (enabled == 0) {
-        return;
+            continue;
     }
-    int days = (timeStamp >> 13) & 127;  // 1111111
-    int day = currentTime.Wday;
-    int currentDay = (days << (day - 1)) & 1;  // wday range 1-7
-    if (currentDay == 0) {
-        return;
+        int days = (timeStamp >> 13) & 127;  // 1111111   SFTWTMS
+        int currentDay = currentTime.Wday;
+        int day = (days << (currentDay - 1)) & 1;  // wday range 1-7
+
+        if (day == 0) {
+            continue;
     }
 
     int hour = (timeStamp >> 6) & 31;  // 11111
     int minute = (timeStamp)&63;       // 111111
-    preferences.end();
+
     if (currentTime.Hour == hour && currentTime.Minute == minute) {
         vibMotor();
+            break;
+        }
     }
+    preferences.end();
 }
 void Watchy::showAccelerometer() {
     display.setFullWindow();

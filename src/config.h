@@ -31,6 +31,7 @@
 #define SET_ALARM_THURSDAY 8
 #define SET_ALARM_FRIDAY 9
 #define SET_ALARM_SATURDAY 10
+#define ALARM_COUNT 9
 
 //set time
 #define SET_HOUR 0
