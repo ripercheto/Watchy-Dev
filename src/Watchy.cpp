@@ -712,24 +712,25 @@ void Watchy::checkAlarm() {
     preferences.begin(PREFERENCES_ALARMS_KEY, true);
     for (int i = 0; i < ALARM_COUNT; i++) {
         uint32_t timeStamp = preferences.getUInt(((String)i).c_str(), 0);
-    int enabled = (timeStamp >> 20) & 1;  // 1
+        int enabled = (timeStamp >> 20) & 1;  // 1
 
-    if (enabled == 0) {
+        if (enabled == 0) {
             continue;
-    }
+        }
         int days = (timeStamp >> 13) & 127;  // 1111111   SFTWTMS
+
         int currentDay = currentTime.Wday;
-        int day = (days << (currentDay - 1)) & 1;  // wday range 1-7
+        int day = bitRead(days, currentDay - 1);
 
         if (day == 0) {
             continue;
-    }
+        }
 
-    int hour = (timeStamp >> 6) & 31;  // 11111
-    int minute = (timeStamp)&63;       // 111111
+        int hour = (timeStamp >> 6) & 31;  // 11111
+        int minute = (timeStamp)&63;       // 111111
 
-    if (currentTime.Hour == hour && currentTime.Minute == minute) {
-        vibMotor();
+        if (currentTime.Hour == hour && currentTime.Minute == minute) {
+            vibMotor();
             break;
         }
     }
